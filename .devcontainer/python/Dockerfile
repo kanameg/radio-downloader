@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     lhasa \
     wget \
     locales \
+    ffmpeg \
     fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
 
 # GitHub CLIのインストール
