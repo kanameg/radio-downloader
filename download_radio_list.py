@@ -3,15 +3,27 @@
 Simple HTML downloader (list output).
 
 Usage:
-    python download_radio_list.py BR8Z3NX7XM -o programs.json
+    python download_radio_list.py BR8Z3NX7XM -o programs.csv
 
-Saves JSON list to file if `-o/--output` is given, otherwise prints to stdout.
+Downloads program entries from NHK and merges with an existing
+`<target>.csv` (if present) using `hls_url` as the key. The script
+uses pandas for the merge when available.
 """
 import argparse
 import html as _html
 import json
+import os
 import re
 import sys
+
+try:
+    import pandas as pd
+except Exception:
+    print(
+        "pandas is required. Install with: python3 -m pip install pandas",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 try:
     from playwright.sync_api import sync_playwright
@@ -115,10 +127,12 @@ def download(url, timeout=30, headers=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download program list (JSON) from an NHK program ID"
+        description="Download program list (CSV) from an NHK program ID"
     )
     parser.add_argument("target", help="NHK program ID (e.g. BR8Z3NX7XM)")
-    parser.add_argument("-o", "--output", help="Output JSON file path (default stdout)")
+    parser.add_argument(
+        "-o", "--output", help="Output CSV file path (default: <target>.csv)"
+    )
     parser.add_argument(
         "--timeout", type=int, default=30, help="Timeout in seconds (default: 30)"
     )
@@ -142,57 +156,59 @@ def main():
     if not programs:
         print("No program entries found in the page.", file=sys.stderr)
         sys.exit(1)
-    # Merge with existing file named {target}.json if present (merge key: hls_url)
-    existing_fname = f"{target}.json"
-    existing = []
-    try:
-        with open(existing_fname, "r", encoding="utf-8") as ef:
-            existing = json.load(ef)
-            if not isinstance(existing, list):
-                existing = []
-    except FileNotFoundError:
-        existing = []
-    except Exception as e:
-        print(
-            f"Warning: failed to read existing file {existing_fname}: {e}",
-            file=sys.stderr,
+    # Merge with existing CSV named {target}.csv if present (merge key: hls_url)
+    existing_fname = f"{target}.csv"
+
+    # DataFrame from parsed programs
+    new_df = (
+        pd.DataFrame(programs)
+        if programs
+        else pd.DataFrame(
+            columns=["title", "broadcast_date", "broadcast_start", "hls_url", "get"]
         )
-        existing = []
+    )
 
-    existing_by_hls = {
-        e.get("hls_url"): e
-        for e in existing
-        if isinstance(e, dict) and e.get("hls_url")
-    }
-    parsed_by_hls = {p.get("hls_url"): p for p in programs if p.get("hls_url")}
-
-    merged = []
-    # For each parsed program, prefer existing file's values when keys overlap
-    for hls, p in parsed_by_hls.items():
-        if hls in existing_by_hls:
-            ex = existing_by_hls[hls]
-            m = p.copy()
-            m.update(ex)
-            merged.append(m)
-        else:
-            merged.append(p)
-
-    # Also include any existing entries that are not present in newly parsed list
-    for hls, ex in existing_by_hls.items():
-        if hls and hls not in parsed_by_hls:
-            merged.append(ex)
-
-    # Output merged JSON
-    if args.output:
+    # Read existing CSV if present, else create empty with standard columns
+    if os.path.exists(existing_fname):
         try:
-            with open(args.output, "w", encoding="utf-8") as f:
-                json.dump(merged, f, ensure_ascii=False, indent=2)
+            existing_df = pd.read_csv(existing_fname, dtype=str)
         except Exception as e:
-            print(f"Error writing to {args.output}: {e}", file=sys.stderr)
-            sys.exit(1)
+            print(
+                f"Warning: failed to read existing CSV {existing_fname}: {e}",
+                file=sys.stderr,
+            )
+            existing_df = pd.DataFrame(
+                columns=["title", "broadcast_date", "broadcast_start", "hls_url", "get"]
+            )
     else:
-        json.dump(merged, sys.stdout, ensure_ascii=False, indent=2)
-        sys.stdout.write("\n")
+        existing_df = pd.DataFrame(
+            columns=["title", "broadcast_date", "broadcast_start", "hls_url", "get"]
+        )
+
+    # Ensure union of columns
+    for c in existing_df.columns.difference(new_df.columns):
+        new_df[c] = ""
+    for c in new_df.columns.difference(existing_df.columns):
+        existing_df[c] = ""
+
+    # Place existing first so its values take precedence when dropping duplicates
+    combined = pd.concat([existing_df, new_df], ignore_index=True, sort=False)
+    if "hls_url" in combined.columns:
+        combined = combined.drop_duplicates(subset=["hls_url"], keep="first")
+
+    # Normalize `get` column (use to_numeric to avoid FutureWarning about downcasting)
+    if "get" in combined.columns:
+        combined["get"] = (
+            pd.to_numeric(combined["get"], errors="coerce").fillna(0).astype(int)
+        )
+
+    # Write CSV to output (args.output if given, else existing_fname)
+    out_fname = args.output if args.output else existing_fname
+    try:
+        combined.to_csv(out_fname, index=False, encoding="utf-8")
+    except Exception as e:
+        print(f"Error writing CSV to {out_fname}: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
