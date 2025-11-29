@@ -119,7 +119,7 @@ while IFS=$'\t' read -r hls title date getflag; do
 
   safe_title=$(sanitize "$title")
   safe_date=$(sanitize "$date")
-  outname="${safe_date}${safe_title}.m4a"
+  outname="${safe_date}${safe_title}.mp3"
   outpath="$OUTDIR/$outname"
 
   if [[ -f "$outpath" ]]; then
@@ -130,7 +130,8 @@ while IFS=$'\t' read -r hls title date getflag; do
 
   echo "Downloading [$index]: ${title:-<no-title>} (${date:-<no-date>}) -> $outpath"
   # reduce ffmpeg verbosity: show only errors, and disable interactive stdin
-  cmd=(ffmpeg -hide_banner -loglevel error -nostdin -y -i "$hls_clean" -c copy -bsf:a aac_adtstoasc "$outpath")
+  # Transcode to MP3 (libmp3lame) at 64 kbps
+  cmd=(ffmpeg -hide_banner -loglevel error -nostdin -y -i "$hls_clean" -vn -c:a libmp3lame -b:a 64k "$outpath")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf 'DRY RUN: %s\n' "${cmd[*]}"
   else
