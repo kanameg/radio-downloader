@@ -12,7 +12,7 @@ set -euo pipefail
 #   --dry-run            print ffmpeg commands instead of executing them
 #   -h, --help           show help
 
-CSV_FILE="BR8Z3NX7XM.csv"
+CSV_FILE=""
 OUTDIR="./downloads"
 # By default only download rows with get == 0
 ONLY_GET_ZERO=1
@@ -23,7 +23,7 @@ usage(){
 Usage: download_br8_from_csv.sh [options]
 
 Options:
-  -f, --file FILE      CSV file to read (default: BR8Z3NX7XM.csv)
+  -f, --file FILE      CSV file to read (required). You may pass a base name like 'BR8Z3NX7XM' ('.csv' will be appended).
   -d, --dir DIR        Output directory (default: ./downloads)
   --only-get-zero      Only download rows with get == 0 (default)
   --all                Download all rows regardless of `get`
@@ -50,9 +50,20 @@ while [[ $# -gt 0 ]]; do
       usage; exit 0;;
     --) shift; break;;
     -*) echo "Unknown option: $1" >&2; usage; exit 1;;
-    *) CSV_FILE="$1"; shift;;
+    *) echo "Positional arguments are not accepted; use -f/--file" >&2; usage; exit 1;;
   esac
 done
+
+if [[ -z "$CSV_FILE" ]]; then
+  echo "Error: -f/--file is required." >&2
+  usage
+  exit 2
+fi
+
+# normalize CSV_FILE: append .csv if missing
+if [[ "$CSV_FILE" != *.csv ]]; then
+  CSV_FILE="${CSV_FILE}.csv"
+fi
 
 if [[ ! -f "$CSV_FILE" ]]; then
   echo "CSV file not found: $CSV_FILE" >&2
@@ -108,7 +119,7 @@ while IFS=$'\t' read -r hls title date getflag; do
 
   safe_title=$(sanitize "$title")
   safe_date=$(sanitize "$date")
-  outname="${safe_date}_${safe_title}.m4a"
+  outname="${safe_date}${safe_title}.m4a"
   outpath="$OUTDIR/$outname"
 
   if [[ -f "$outpath" ]]; then
