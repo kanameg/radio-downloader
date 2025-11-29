@@ -38,7 +38,11 @@ def download_with_playwright(url, timeout, headers):
             context = browser.new_context()
 
         if headers:
-            extra = {k: v for k, v in headers.items() if k.lower() != "user-agent"}
+            extra = {
+                header_key: header_value
+                for header_key, header_value in headers.items()
+                if header_key.lower() != "user-agent"
+            }
             if extra:
                 context.set_extra_http_headers(extra)
 
@@ -71,7 +75,11 @@ def parse_programs_from_html(html_text):
             return False
         # bs4 may give a list for multiple classes
         if isinstance(cls, (list, tuple)):
-            return any("nol_audio_player_base" in c for c in cls if c)
+            return any(
+                "nol_audio_player_base" in class_name
+                for class_name in cls
+                if class_name
+            )
         return "nol_audio_player_base" in cls
 
     for div in soup.find_all("div", class_=class_contains_nol_audio):
@@ -181,10 +189,10 @@ def main():
         )
 
     # Ensure union of columns
-    for c in existing_df.columns.difference(new_df.columns):
-        new_df[c] = ""
-    for c in new_df.columns.difference(existing_df.columns):
-        existing_df[c] = ""
+    for column_name in existing_df.columns.difference(new_df.columns):
+        new_df[column_name] = ""
+    for column_name in new_df.columns.difference(existing_df.columns):
+        existing_df[column_name] = ""
 
     # Place existing first so its values take precedence when dropping duplicates
     combined = pd.concat([existing_df, new_df], ignore_index=True, sort=False)
