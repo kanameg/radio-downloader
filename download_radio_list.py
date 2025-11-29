@@ -38,8 +38,10 @@ def download_with_playwright(url, timeout, headers):
         )
 
     ua = headers.get("User-Agent") if headers else None
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+    with sync_playwright() as playwright_handle:
+        browser = playwright_handle.chromium.launch(
+            headless=True, args=["--no-sandbox"]
+        )
         if ua:
             context = browser.new_context(user_agent=ua)
         else:
@@ -74,8 +76,8 @@ def parse_programs_from_html(html_text):
         r"<div[^>]*class=[\'\"][^\'\"]*nol_audio_player_base[^\'\"]*[^>]*>",
         re.IGNORECASE,
     )
-    for m in tag_pattern.finditer(html_text):
-        tag = m.group(0)
+    for match in tag_pattern.finditer(html_text):
+        tag = match.group(0)
         hls_m = re.search(r"data-hlsurl=[\"\']([^\"\']+)[\"\']", tag)
         aa_m = re.search(r"data-aa=[\"\']([^\"\']+)[\"\']", tag)
         if not hls_m:
@@ -148,8 +150,8 @@ def main():
 
     try:
         html, encoding = download(url, timeout=args.timeout)
-    except Exception as e:
-        print(f"Error downloading {url}: {e}", file=sys.stderr)
+    except Exception as err:
+        print(f"Error downloading {url}: {err}", file=sys.stderr)
         sys.exit(1)
 
     programs = parse_programs_from_html(html)
@@ -172,9 +174,9 @@ def main():
     if os.path.exists(existing_fname):
         try:
             existing_df = pd.read_csv(existing_fname, dtype=str)
-        except Exception as e:
+        except Exception as err:
             print(
-                f"Warning: failed to read existing CSV {existing_fname}: {e}",
+                f"Warning: failed to read existing CSV {existing_fname}: {err}",
                 file=sys.stderr,
             )
             existing_df = pd.DataFrame(
@@ -206,8 +208,8 @@ def main():
     out_fname = args.output if args.output else existing_fname
     try:
         combined.to_csv(out_fname, index=False, encoding="utf-8")
-    except Exception as e:
-        print(f"Error writing CSV to {out_fname}: {e}", file=sys.stderr)
+    except Exception as err:
+        print(f"Error writing CSV to {out_fname}: {err}", file=sys.stderr)
         sys.exit(1)
 
 
