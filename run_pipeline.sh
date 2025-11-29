@@ -60,7 +60,9 @@ if [[ -z "${ID:-}" ]]; then
   exit 2
 fi
 
-CSV_FILE="${ID}.csv"
+CSV_DIR="csv"
+mkdir -p "$CSV_DIR"
+CSV_FILE="${CSV_DIR}/${ID}.csv"
 
 echo "[1/2] Generating CSV for ID=${ID} -> ${CSV_FILE}"
 if ! command -v python3 >/dev/null 2>&1; then
@@ -69,7 +71,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # Run the Python scraper; if it fails, stop.
-python3 download_radio_list.py "$ID" -o "$CSV_FILE"
+python3 download_radio_list.py -f "$ID" -o "$CSV_FILE"
 
 if [[ ! -f "$CSV_FILE" ]]; then
   echo "Error: expected CSV file not created: $CSV_FILE" >&2

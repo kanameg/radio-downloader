@@ -169,8 +169,9 @@ def main():
     if not programs:
         print("No program entries found in the page.", file=sys.stderr)
         sys.exit(1)
+
     # Merge with existing CSV named {target}.csv if present (merge key: hls_url)
-    existing_fname = f"{target}.csv"
+    existing_fname = args.output if args.output else f"{target}.csv"
 
     # DataFrame from parsed programs
     new_df = (
