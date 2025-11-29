@@ -132,9 +132,7 @@ def main():
         description="Download program list (CSV) from an NHK program ID"
     )
     parser.add_argument("target", help="NHK program ID (e.g. BR8Z3NX7XM)")
-    parser.add_argument(
-        "-o", "--output", help="Output CSV file path (default: <target>.csv)"
-    )
+    parser.add_argument("-o", "--output", help="Output CSV file path (default: stdout)")
     parser.add_argument(
         "--timeout", type=int, default=30, help="Timeout in seconds (default: 30)"
     )
@@ -204,13 +202,21 @@ def main():
             pd.to_numeric(combined["get"], errors="coerce").fillna(0).astype(int)
         )
 
-    # Write CSV to output (args.output if given, else existing_fname)
-    out_fname = args.output if args.output else existing_fname
-    try:
-        combined.to_csv(out_fname, index=False, encoding="utf-8")
-    except Exception as err:
-        print(f"Error writing CSV to {out_fname}: {err}", file=sys.stderr)
-        sys.exit(1)
+    # Write CSV to output file if specified, otherwise write to stdout
+    if args.output:
+        out_fname = args.output
+        try:
+            combined.to_csv(out_fname, index=False, encoding="utf-8")
+        except Exception as err:
+            print(f"Error writing CSV to {out_fname}: {err}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # print CSV to stdout
+        try:
+            combined.to_csv(sys.stdout, index=False)
+        except Exception as err:
+            print(f"Error writing CSV to stdout: {err}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
