@@ -142,19 +142,31 @@ def main():
     if not programs:
         print("No program entries found in the page.", file=sys.stderr)
         sys.exit(1)
-    # Merge with existing file named {target}.json if present (merge key: hls_url)
-    existing_fname = f"{target}.json"
+    # Merge with existing file named {target}.csv if present (merge key: hls_url)
+    existing_fname = f"{target}.csv"
     existing = []
     try:
-        with open(existing_fname, "r", encoding="utf-8") as ef:
-            existing = json.load(ef)
-            if not isinstance(existing, list):
-                existing = []
+        import csv as _csv
+
+        with open(existing_fname, "r", encoding="utf-8", newline="") as ef:
+            reader = _csv.DictReader(ef)
+            for row in reader:
+                hls = row.get("hls_url")
+                if not hls:
+                    continue
+                entry = dict(row)
+                if "get" in entry:
+                    try:
+                        entry["get"] = int(entry["get"]) if entry["get"] != "" else 0
+                    except Exception:
+                        # leave as-is if cannot convert
+                        pass
+                existing.append(entry)
     except FileNotFoundError:
         existing = []
     except Exception as e:
         print(
-            f"Warning: failed to read existing file {existing_fname}: {e}",
+            f"Warning: failed to read existing CSV file {existing_fname}: {e}",
             file=sys.stderr,
         )
         existing = []
@@ -182,17 +194,35 @@ def main():
         if hls and hls not in parsed_by_hls:
             merged.append(ex)
 
-    # Output merged JSON
-    if args.output:
-        try:
-            with open(args.output, "w", encoding="utf-8") as f:
-                json.dump(merged, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error writing to {args.output}: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        json.dump(merged, sys.stdout, ensure_ascii=False, indent=2)
-        sys.stdout.write("\n")
+    # Output merged CSV
+    # Determine CSV columns: prefer core fields first, then any extras
+    core_cols = ["title", "broadcast_date", "broadcast_start", "hls_url", "get"]
+    extra_cols = []
+    for entry in merged:
+        for k in entry.keys():
+            if k not in core_cols and k not in extra_cols:
+                extra_cols.append(k)
+    cols = core_cols + extra_cols
+
+    import csv
+
+    try:
+        if args.output:
+            out_f = open(args.output, "w", encoding="utf-8", newline="")
+        else:
+            out_f = sys.stdout
+
+        writer = csv.writer(out_f)
+        writer.writerow(cols)
+        for e in merged:
+            row = [e.get(c, "") for c in cols]
+            writer.writerow(row)
+    except Exception as e:
+        print(f"Error writing CSV to {args.output or 'stdout'}: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        if args.output:
+            out_f.close()
 
 
 if __name__ == "__main__":
