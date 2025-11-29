@@ -125,7 +125,7 @@ while IFS=$'\t' read -r hls title date bstart program getflag; do
 
   safe_title=$(sanitize "$title")
   safe_date=$(sanitize "$date")
-  outname="${safe_date}${safe_title}.mp3"
+  outname="${safe_date}${safe_title}.m4a"
   outpath="$OUTDIR/$outname"
 
   if [[ -f "$outpath" ]]; then
@@ -136,28 +136,17 @@ while IFS=$'\t' read -r hls title date bstart program getflag; do
 
   echo "Downloading [$index]: ${title:-<no-title>} [program:${program:-<no-program>}] (${date:-<no-date>}, start:${bstart:-<no-start>}) -> $outpath"
   # reduce ffmpeg verbosity: show only errors, and disable interactive stdin
-  # Transcode to MP3 (libmp3lame) at 64 kbps
-  cmd=(ffmpeg -hide_banner -loglevel error -nostdin -y -i "$hls_clean" -vn -c:a libmp3lame -b:a 64k "$outpath")
+  # Copy HLS AAC stream into M4A container and set metadata (title/album/artist)
+  # Use broadcast_date + title as the song title
+  song_title="${date} ${title}"
+  # Trim leading/trailing whitespace
+  song_title="$(echo -n "$song_title" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+  cmd=(ffmpeg -hide_banner -loglevel error -nostdin -y -i "$hls_clean" -c copy -bsf:a aac_adtstoasc -metadata title="$song_title" -metadata album="$program" -metadata artist="NHKラジオ" "$outpath")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf 'DRY RUN: %s\n' "${cmd[*]}"
   else
     # Run ffmpeg and only update CSV on success. Use if...then to avoid set -e exiting on non-zero.
     if "${cmd[@]}"; then
-      # After successful transcode, set ID3 tags (title -> song, album -> program) using mid3v2
-      if command -v mid3v2 >/dev/null 2>&1; then
-        # Use broadcast_date + title as the song title
-        song_title="${date} ${title}"
-        # Trim leading/trailing whitespace
-        song_title="$(echo -n "$song_title" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-          printf 'DRY RUN: mid3v2 --song="%s" --album="%s" --artist="%s" "%s"\n' "$song_title" "$program" "NHKラジオ" "$outpath"
-        else
-          mid3v2 --song="$song_title" --album="$program" --artist="NHKラジオ" "$outpath" || echo "Warning: mid3v2 failed for $outpath" >&2
-        fi
-      else
-        echo "Warning: mid3v2 not found; skipping ID3 tag write for $outpath" >&2
-      fi
-
       # Update CSV: set get=1 for rows matching this hls URL
       export CURRENT_HLS="$hls_clean"
       python3 - <<'PY'
