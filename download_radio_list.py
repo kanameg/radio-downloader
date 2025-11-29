@@ -16,19 +16,9 @@ import os
 import re
 import sys
 
-try:
-    import pandas as pd
-except Exception:
-    print(
-        "pandas is required. Install with: python3 -m pip install pandas",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-try:
-    from playwright.sync_api import sync_playwright
-except Exception:
-    sync_playwright = None
+import pandas as pd
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 
 def download_with_playwright(url, timeout, headers):
@@ -71,23 +61,28 @@ def download_with_urllib(url, timeout, headers):
 
 
 def parse_programs_from_html(html_text):
+    # Parse using BeautifulSoup for clarity and robustness
+    soup = BeautifulSoup(html_text, "lxml")
     entries = []
-    tag_pattern = re.compile(
-        r"<div[^>]*class=[\'\"][^\'\"]*nol_audio_player_base[^\'\"]*[^>]*>",
-        re.IGNORECASE,
-    )
-    for match in tag_pattern.finditer(html_text):
-        tag = match.group(0)
-        hls_m = re.search(r"data-hlsurl=[\"\']([^\"\']+)[\"\']", tag)
-        aa_m = re.search(r"data-aa=[\"\']([^\"\']+)[\"\']", tag)
-        if not hls_m:
-            continue
-        hls = hls_m.group(1)
-        aa = aa_m.group(1) if aa_m else ""
 
-        title = None
-        broadcast_date = None
-        broadcast_start = None
+    # Find divs whose class attribute contains 'nol_audio_player_base'
+    def class_contains_nol_audio(cls):
+        if not cls:
+            return False
+        # bs4 may give a list for multiple classes
+        if isinstance(cls, (list, tuple)):
+            return any("nol_audio_player_base" in c for c in cls if c)
+        return "nol_audio_player_base" in cls
+
+    for div in soup.find_all("div", class_=class_contains_nol_audio):
+        hls = div.get("data-hlsurl") or ""
+        aa = div.get("data-aa") or ""
+        if not hls:
+            continue
+
+        title = ""
+        broadcast_date = ""
+        broadcast_start = ""
         try:
             parts = aa.split(";")
             if len(parts) >= 2:
