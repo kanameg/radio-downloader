@@ -1,0 +1,4 @@
+{
+    // VScodeのJupyterの相対パスを設定
+    "jupyter.notebookFileRoot": "${workspaceFolder}"
+}

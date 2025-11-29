@@ -1,0 +1,14 @@
+services:
+  radio-python: # service nameで、container_nameと合わせる
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: radio-python
+    expose: 
+      - 8088
+    stdin_open: true
+    tty: true
+    working_dir: /app
+    volumes:
+      - ../:/app
+      
