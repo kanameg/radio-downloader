@@ -70,6 +70,9 @@ if [[ ! -f "$CSV_FILE" ]]; then
   exit 2
 fi
 
+# Use the CSV base name (without .csv) as the download subdirectory (ID-based)
+ID_NAME=$(basename "$CSV_FILE" .csv)
+OUTDIR="$OUTDIR/$ID_NAME"
 mkdir -p "$OUTDIR"
 
 sanitize(){
@@ -96,23 +99,26 @@ only_get_zero = os.environ.get('ONLY_GET_ZERO','0') == '1'
 with open(fn, newline='', encoding='utf-8') as f:
     reader = csv.DictReader(f)
     for row in reader:
-        hls = (row.get('hls_url') or row.get('hls') or '').strip()
-        if not hls:
-            continue
-        getv = row.get('get','')
-        try:
-            getint = int(getv) if getv!='' else 0
-        except Exception:
-            getint = 0
-        if only_get_zero and getint != 0:
-            continue
-        title = row.get('title','') or ''
-        date = row.get('broadcast_date','') or ''
-        print('\t'.join([hls, title, date, str(getint)]))
+      hls = (row.get('hls_url') or row.get('hls') or '').strip()
+      if not hls:
+        continue
+      getv = row.get('get','')
+      try:
+        getint = int(getv) if getv!='' else 0
+      except Exception:
+        getint = 0
+      if only_get_zero and getint != 0:
+        continue
+      program = row.get('program','') or ''
+      title = row.get('title','') or ''
+      date = row.get('broadcast_date','') or ''
+      bstart = row.get('broadcast_start','') or ''
+      # output: hls, title, broadcast_date, broadcast_start, program, get
+      print('\t'.join([hls, title, date, bstart, program, str(getint)]))
 PY
 
 index=1
-while IFS=$'\t' read -r hls title date getflag; do
+while IFS=$'\t' read -r hls title date bstart program getflag; do
   # clean hls URL: remove CR/LF and surrounding whitespace
   hls_clean=$(printf '%s' "$hls" | tr -d '\r\n')
   hls_clean="$(echo -n "$hls_clean" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
@@ -128,7 +134,7 @@ while IFS=$'\t' read -r hls title date getflag; do
     continue
   fi
 
-  echo "Downloading [$index]: ${title:-<no-title>} (${date:-<no-date>}) -> $outpath"
+  echo "Downloading [$index]: ${title:-<no-title>} [program:${program:-<no-program>}] (${date:-<no-date>}, start:${bstart:-<no-start>}) -> $outpath"
   # reduce ffmpeg verbosity: show only errors, and disable interactive stdin
   # Transcode to MP3 (libmp3lame) at 64 kbps
   cmd=(ffmpeg -hide_banner -loglevel error -nostdin -y -i "$hls_clean" -vn -c:a libmp3lame -b:a 64k "$outpath")
@@ -137,6 +143,21 @@ while IFS=$'\t' read -r hls title date getflag; do
   else
     # Run ffmpeg and only update CSV on success. Use if...then to avoid set -e exiting on non-zero.
     if "${cmd[@]}"; then
+      # After successful transcode, set ID3 tags (title -> song, album -> program) using mid3v2
+      if command -v mid3v2 >/dev/null 2>&1; then
+        # Use broadcast_date + title as the song title
+        song_title="${date} ${title}"
+        # Trim leading/trailing whitespace
+        song_title="$(echo -n "$song_title" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          printf 'DRY RUN: mid3v2 --song="%s" --album="%s" --artist="%s" "%s"\n' "$song_title" "$program" "NHKラジオ" "$outpath"
+        else
+          mid3v2 --song="$song_title" --album="$program" --artist="NHKラジオ" "$outpath" || echo "Warning: mid3v2 failed for $outpath" >&2
+        fi
+      else
+        echo "Warning: mid3v2 not found; skipping ID3 tag write for $outpath" >&2
+      fi
+
       # Update CSV: set get=1 for rows matching this hls URL
       export CURRENT_HLS="$hls_clean"
       python3 - <<'PY'
