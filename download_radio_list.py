@@ -69,6 +69,15 @@ def parse_programs_from_html(html_text):
     soup = BeautifulSoup(html_text, "lxml")
     entries = []
 
+    # Extract page-level program name from H1 if present
+    program_name = ""
+    h1 = soup.find("h1", class_="detail-title-text")
+    if h1:
+        try:
+            program_name = _html.unescape(h1.get_text(strip=True))
+        except Exception:
+            program_name = h1.get_text(strip=True)
+
     # Find divs whose class attribute contains 'nol_audio_player_base'
     def class_contains_nol_audio(cls):
         if not cls:
@@ -105,6 +114,7 @@ def parse_programs_from_html(html_text):
 
         entries.append(
             {
+                "program": program_name or "",
                 "title": title or "",
                 "broadcast_date": broadcast_date or "",
                 "broadcast_start": broadcast_start or "",
@@ -209,6 +219,19 @@ def main():
     if args.output:
         out_fname = args.output
         try:
+            # Ensure desired column order: program,title,broadcast_date,broadcast_start,hls_url,get
+            desired_columns = [
+                "program",
+                "title",
+                "broadcast_date",
+                "broadcast_start",
+                "hls_url",
+                "get",
+            ]
+            for c in desired_columns:
+                if c not in combined.columns:
+                    combined[c] = ""
+            combined = combined[desired_columns]
             combined.to_csv(out_fname, index=False, encoding="utf-8")
         except Exception as err:
             print(f"Error writing CSV to {out_fname}: {err}", file=sys.stderr)
@@ -216,6 +239,18 @@ def main():
     else:
         # print CSV to stdout
         try:
+            desired_columns = [
+                "program",
+                "title",
+                "broadcast_date",
+                "broadcast_start",
+                "hls_url",
+                "get",
+            ]
+            for c in desired_columns:
+                if c not in combined.columns:
+                    combined[c] = ""
+            combined = combined[desired_columns]
             combined.to_csv(sys.stdout, index=False)
         except Exception as err:
             print(f"Error writing CSV to stdout: {err}", file=sys.stderr)
