@@ -134,7 +134,55 @@ while IFS=$'\t' read -r hls title date getflag; do
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf 'DRY RUN: %s\n' "${cmd[*]}"
   else
-    "${cmd[@]}"
+    # Run ffmpeg and only update CSV on success. Use if...then to avoid set -e exiting on non-zero.
+    if "${cmd[@]}"; then
+      # Update CSV: set get=1 for rows matching this hls URL
+      export CURRENT_HLS="$hls_clean"
+      python3 - <<'PY'
+import os, csv, tempfile, shutil
+fn = os.environ.get('CSV_FILE')
+target = os.environ.get('CURRENT_HLS')
+if not fn or not target:
+    raise SystemExit(0)
+
+# Read CSV
+with open(fn, newline='', encoding='utf-8') as f:
+    reader = csv.DictReader(f)
+    fieldnames = reader.fieldnames or []
+    rows = list(reader)
+
+if 'get' not in fieldnames:
+    fieldnames.append('get')
+
+changed = False
+for r in rows:
+    h = (r.get('hls_url') or r.get('hls') or '').strip()
+    if h == target:
+        try:
+            if int(r.get('get','0')) != 1:
+                r['get'] = '1'
+                changed = True
+        except Exception:
+            r['get'] = '1'
+            changed = True
+
+if changed:
+    # backup original
+    shutil.copyfile(fn, fn + '.bak')
+    dname = os.path.dirname(fn) or '.'
+    fd, tmpfn = tempfile.mkstemp(prefix='csvtmp', dir=dname)
+    os.close(fd)
+    with open(tmpfn, 'w', newline='', encoding='utf-8') as out:
+        writer = csv.DictWriter(out, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+    os.replace(tmpfn, fn)
+PY
+      unset CURRENT_HLS
+    else
+      echo "ffmpeg failed for: $hls_clean" >&2
+    fi
   fi
 
   ((index++))
